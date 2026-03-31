@@ -12,13 +12,15 @@ interface Message {
 
 interface ChatProps {
   onPlanGenerated?: () => void
+  onStreamComplete?: () => void
   compact?: boolean
 }
 
-export default function Chat({ onPlanGenerated, compact }: ChatProps) {
+export default function Chat({ onPlanGenerated, onStreamComplete, compact }: ChatProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
+  const planGeneratedRef = useRef(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -91,57 +93,81 @@ export default function Chat({ onPlanGenerated, compact }: ChatProps) {
 
           if (data.type === 'token') {
             setMessages((prev) => {
-              const updated = [...prev]
-              const last = updated[updated.length - 1]
+              const last = prev[prev.length - 1]
               if (last.role === 'assistant') {
-                last.content += data.content
+                return [
+                  ...prev.slice(0, -1),
+                  { ...last, content: last.content + data.content },
+                ]
               }
-              return [...updated]
+              return prev
             })
           }
 
           if (data.type === 'tool') {
             setMessages((prev) => {
-              const updated = [...prev]
-              const last = updated[updated.length - 1]
+              const last = prev[prev.length - 1]
               if (last.role === 'assistant') {
-                last.toolResults = [
-                  ...(last.toolResults || []),
-                  { name: data.name, result: data.result },
+                return [
+                  ...prev.slice(0, -1),
+                  {
+                    ...last,
+                    toolResults: [
+                      ...(last.toolResults || []),
+                      { name: data.name, result: data.result },
+                    ],
+                  },
                 ]
               }
-              return [...updated]
+              return prev
             })
 
-            // Check if plan was generated
+            // Flag that a plan was generated (redirect after stream completes)
             if (data.name === 'generate_plan' || data.name === 'update_plan') {
+              planGeneratedRef.current = true
               onPlanGenerated?.()
             }
           }
 
           if (data.type === 'error') {
             setMessages((prev) => {
-              const updated = [...prev]
-              const last = updated[updated.length - 1]
+              const last = prev[prev.length - 1]
               if (last.role === 'assistant') {
-                last.content = `Error: ${data.message}`
+                let errorContent: string
+                if (data.message?.includes('overloaded')) {
+                  errorContent = 'The AI service is temporarily busy. Please try again in a moment.'
+                } else if (data.message?.includes('API key')) {
+                  errorContent = 'API key not configured. Please check your environment variables.'
+                } else {
+                  errorContent = `Something went wrong: ${data.message || 'Unknown error'}. Please try again.`
+                }
+                return [
+                  ...prev.slice(0, -1),
+                  { ...last, content: errorContent },
+                ]
               }
-              return [...updated]
+              return prev
             })
           }
         }
       }
     } catch (error) {
       setMessages((prev) => {
-        const updated = [...prev]
-        const last = updated[updated.length - 1]
+        const last = prev[prev.length - 1]
         if (last.role === 'assistant') {
-          last.content = `Connection error. Please try again.`
+          return [
+            ...prev.slice(0, -1),
+            { ...last, content: 'Connection error. Please try again.' },
+          ]
         }
-        return [...updated]
+        return prev
       })
     } finally {
       setIsStreaming(false)
+      if (planGeneratedRef.current) {
+        planGeneratedRef.current = false
+        onStreamComplete?.()
+      }
     }
   }
 

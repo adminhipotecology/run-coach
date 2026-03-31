@@ -19,7 +19,7 @@ export default function LoginPage() {
     setError('')
 
     if (isSignUp) {
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -28,7 +28,12 @@ export default function LoginPage() {
       })
       if (error) {
         setError(error.message)
-      } else {
+      } else if (data.user) {
+        // Create profile after sign-up
+        await supabase.from('profiles').upsert({
+          id: data.user.id,
+          email: data.user.email,
+        })
         router.push('/onboarding')
       }
     } else {

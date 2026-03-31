@@ -9,7 +9,8 @@ export default function HeroSection({ meta }: { meta: PlanMeta }) {
   useEffect(() => {
     const race = new Date(meta.raceDate)
     const now = new Date()
-    setDaysLeft(Math.ceil((race.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)))
+    const days = Math.ceil((race.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+    setDaysLeft(Math.max(0, days))
   }, [meta.raceDate])
 
   const paceMin = meta.targetPace.split(':')[0]
@@ -39,8 +40,8 @@ export default function HeroSection({ meta }: { meta: PlanMeta }) {
       </div>
 
       <div className="hero-countdown">
-        <div className="hero-countdown-number">{daysLeft}</div>
-        <div className="hero-countdown-label">Days to Race</div>
+        <div className="hero-countdown-number">{daysLeft || '—'}</div>
+        <div className="hero-countdown-label">{daysLeft > 0 ? 'Days to Race' : 'Race Date Passed'}</div>
       </div>
     </section>
   )

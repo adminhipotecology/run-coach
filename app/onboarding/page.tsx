@@ -8,9 +8,9 @@ export default function OnboardingPage() {
 
   return (
     <Chat
-      onPlanGenerated={() => {
-        // Small delay to let Supabase save complete
-        setTimeout(() => router.push('/dashboard'), 1000)
+      onStreamComplete={() => {
+        // Redirect after the full response has streamed
+        setTimeout(() => router.push('/dashboard'), 1500)
       }}
     />
   )

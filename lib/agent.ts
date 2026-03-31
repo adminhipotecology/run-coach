@@ -1,5 +1,5 @@
 import { ChatAnthropic } from '@langchain/anthropic'
-import { createReactAgent } from '@langchain/langgraph/prebuilt'
+import { createAgent } from 'langchain'
 import { COACH_SYSTEM_PROMPT } from './prompts'
 import { generatePlanTool } from './tools/generate-plan'
 import { generateZonesTool } from './tools/generate-zones'
@@ -23,11 +23,9 @@ export function createCoachAgent() {
     maxTokens: 4096,
   })
 
-  const agent = createReactAgent({
-    llm: model,
+  return createAgent({
+    model,
     tools,
-    messageModifier: COACH_SYSTEM_PROMPT,
+    systemPrompt: COACH_SYSTEM_PROMPT,
   })
-
-  return agent
 }

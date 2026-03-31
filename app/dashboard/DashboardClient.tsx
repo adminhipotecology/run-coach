@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Plan, Run } from '@/types'
 import HeroSection from '@/components/HeroSection'
@@ -27,6 +27,21 @@ export default function DashboardClient({ initialPlan, initialRuns }: DashboardC
   const handleRunParsed = useCallback(() => {
     router.refresh()
   }, [router])
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('visible')
+          }
+        })
+      },
+      { threshold: 0.1 }
+    )
+    document.querySelectorAll('.fade-in').forEach((el) => observer.observe(el))
+    return () => observer.disconnect()
+  }, [])
 
   return (
     <div className="app-layout">
