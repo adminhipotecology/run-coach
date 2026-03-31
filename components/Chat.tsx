@@ -11,12 +11,13 @@ interface Message {
 }
 
 interface ChatProps {
-  onPlanGenerated?: () => void
   onStreamComplete?: () => void
   compact?: boolean
+  prefillMessage?: string | null
+  onPrefillConsumed?: () => void
 }
 
-export default function Chat({ onPlanGenerated, onStreamComplete, compact }: ChatProps) {
+export default function Chat({ onStreamComplete, compact, prefillMessage, onPrefillConsumed }: ChatProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
@@ -36,13 +37,24 @@ export default function Chat({ onPlanGenerated, onStreamComplete, compact }: Cha
     }
   }, [input])
 
-  async function handleSend() {
-    if (!input.trim() || isStreaming) return
+  // Handle prefill messages from parent (e.g., Edit Plan)
+  useEffect(() => {
+    if (prefillMessage && !isStreaming) {
+      handleSend(prefillMessage)
+      onPrefillConsumed?.()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefillMessage])
+
+  async function handleSend(overrideText?: string) {
+    const text = overrideText ?? input.trim()
+    if (!text || isStreaming) return
+    if (!overrideText) setInput('')
 
     const userMessage: Message = {
       id: crypto.randomUUID(),
       role: 'user',
-      content: input.trim(),
+      content: text,
     }
 
     const updatedMessages = [...messages, userMessage]
@@ -78,6 +90,7 @@ export default function Chat({ onPlanGenerated, onStreamComplete, compact }: Cha
       if (!reader) throw new Error('No reader')
 
       let buffer = ''
+      const pendingToolResults: { name: string; result: string }[] = []
 
       while (true) {
         const { done, value } = await reader.read()
@@ -105,27 +118,11 @@ export default function Chat({ onPlanGenerated, onStreamComplete, compact }: Cha
           }
 
           if (data.type === 'tool') {
-            setMessages((prev) => {
-              const last = prev[prev.length - 1]
-              if (last.role === 'assistant') {
-                return [
-                  ...prev.slice(0, -1),
-                  {
-                    ...last,
-                    toolResults: [
-                      ...(last.toolResults || []),
-                      { name: data.name, result: data.result },
-                    ],
-                  },
-                ]
-              }
-              return prev
-            })
+            // Buffer tool results — they'll be shown after the text completes
+            pendingToolResults.push({ name: data.name, result: data.result })
 
-            // Flag that a plan was generated (redirect after stream completes)
             if (data.name === 'generate_plan' || data.name === 'update_plan') {
               planGeneratedRef.current = true
-              onPlanGenerated?.()
             }
           }
 
@@ -150,6 +147,20 @@ export default function Chat({ onPlanGenerated, onStreamComplete, compact }: Cha
             })
           }
         }
+      }
+
+      // Stream done — now append buffered tool results to the assistant message
+      if (pendingToolResults.length > 0) {
+        setMessages((prev) => {
+          const last = prev[prev.length - 1]
+          if (last.role === 'assistant') {
+            return [
+              ...prev.slice(0, -1),
+              { ...last, toolResults: [...(last.toolResults || []), ...pendingToolResults] },
+            ]
+          }
+          return prev
+        })
       }
     } catch (error) {
       setMessages((prev) => {
@@ -192,7 +203,7 @@ export default function Chat({ onPlanGenerated, onStreamComplete, compact }: Cha
           <div className="chat-message assistant">
             <div className="chat-message-avatar">RC</div>
             <div className="chat-message-bubble">
-              <p>Hey! I&apos;m your AI running coach. Tell me about your next race goal — what distance, what time are you aiming for, and when is the race?</p>
+              <p>Hey! I&apos;m your running coach. What race are you training for? Just tell me the distance, your goal time, when it is, and how many days a week you can train — I&apos;ll take it from there. Keep it simple, we can always fine-tune later!</p>
             </div>
           </div>
         )}
@@ -224,7 +235,7 @@ export default function Chat({ onPlanGenerated, onStreamComplete, compact }: Cha
           />
           <button
             className="chat-send-btn"
-            onClick={handleSend}
+            onClick={() => handleSend()}
             disabled={!input.trim() || isStreaming}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

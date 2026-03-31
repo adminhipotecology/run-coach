@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
 import type { Plan, Run } from '@/types'
 import HeroSection from '@/components/HeroSection'
 import HRZones from '@/components/HRZones'
@@ -18,14 +19,30 @@ export default function DashboardClient({ initialPlan, initialRuns }: DashboardC
   const [plan] = useState<Plan>(initialPlan)
   const [runs] = useState<Run[]>(initialRuns)
   const [selectedRun, setSelectedRun] = useState<Run | null>(null)
+  const [prefillMessage, setPrefillMessage] = useState<string | null>(null)
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    if (typeof window !== 'undefined') return window.innerWidth > 768
+    return true
+  })
   const router = useRouter()
-
-  const handlePlanGenerated = useCallback(() => {
-    router.refresh()
-  }, [router])
 
   const handleRunParsed = useCallback(() => {
     router.refresh()
+  }, [router])
+
+  const handleStreamComplete = useCallback(() => {
+    window.location.reload()
+  }, [])
+
+  const handleEditPlan = useCallback((message: string) => {
+    setPrefillMessage(message)
+    setSidebarOpen(true)
+  }, [])
+
+  const handleLogout = useCallback(async () => {
+    const supabase = createClient()
+    await supabase.auth.signOut()
+    router.push('/login')
   }, [router])
 
   useEffect(() => {
@@ -43,10 +60,18 @@ export default function DashboardClient({ initialPlan, initialRuns }: DashboardC
     return () => observer.disconnect()
   }, [])
 
+  // Count current activities per week from plan
+  const activitiesPerWeek = plan.weeks.length > 0 ? plan.weeks[0].workouts.length : 0
+
   return (
     <div className="app-layout">
       <main className="app-main">
-        <HeroSection meta={plan.meta} />
+        <HeroSection
+          meta={plan.meta}
+          activitiesPerWeek={activitiesPerWeek}
+          onEditPlan={handleEditPlan}
+          onLogout={handleLogout}
+        />
         <HRZones zones={plan.zones} />
         <Timeline
           weeks={plan.weeks}
@@ -56,8 +81,12 @@ export default function DashboardClient({ initialPlan, initialRuns }: DashboardC
       </main>
 
       <Sidebar
-        onPlanGenerated={handlePlanGenerated}
+        onStreamComplete={handleStreamComplete}
         onRunParsed={handleRunParsed}
+        prefillMessage={prefillMessage}
+        onPrefillConsumed={() => setPrefillMessage(null)}
+        isOpen={sidebarOpen}
+        onToggle={() => setSidebarOpen(!sidebarOpen)}
       />
 
       <RunPanel

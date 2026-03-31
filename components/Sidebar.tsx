@@ -1,29 +1,52 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Chat from './Chat'
 import GarminUpload from './GarminUpload'
 
 interface SidebarProps {
-  onPlanGenerated: () => void
+  onStreamComplete: () => void
   onRunParsed: (runData: Record<string, unknown>) => void
+  prefillMessage?: string | null
+  onPrefillConsumed?: () => void
+  isOpen: boolean
+  onToggle: () => void
 }
 
-export default function Sidebar({ onPlanGenerated, onRunParsed }: SidebarProps) {
+export default function Sidebar({
+  onStreamComplete,
+  onRunParsed,
+  prefillMessage,
+  onPrefillConsumed,
+  isOpen,
+  onToggle,
+}: SidebarProps) {
   const [activeTab, setActiveTab] = useState<'chat' | 'upload'>('chat')
-  const [collapsed, setCollapsed] = useState(false)
+
+  // When a prefill message comes in, switch to chat tab
+  useEffect(() => {
+    if (prefillMessage) {
+      setActiveTab('chat')
+    }
+  }, [prefillMessage])
 
   return (
     <>
+      {/* Mobile floating toggle */}
       <button
         className="sidebar-toggle"
-        onClick={() => setCollapsed(!collapsed)}
+        onClick={onToggle}
         aria-label="Toggle sidebar"
       >
-        {collapsed ? '\u2190' : '\u2192'}
+        {isOpen ? '\u2715' : '\u{1F4AC}'}
       </button>
 
-      <aside className={`app-sidebar ${collapsed ? 'collapsed' : ''}`}>
+      {/* Mobile backdrop */}
+      {isOpen && (
+        <div className="sidebar-backdrop" onClick={onToggle} />
+      )}
+
+      <aside className={`app-sidebar ${isOpen ? '' : 'collapsed'}`}>
         <div className="sidebar-tabs">
           <button
             className={`sidebar-tab ${activeTab === 'chat' ? 'active' : ''}`}
@@ -40,7 +63,12 @@ export default function Sidebar({ onPlanGenerated, onRunParsed }: SidebarProps) 
         </div>
 
         {activeTab === 'chat' && (
-          <Chat onPlanGenerated={onPlanGenerated} compact />
+          <Chat
+            onStreamComplete={onStreamComplete}
+            compact
+            prefillMessage={prefillMessage}
+            onPrefillConsumed={onPrefillConsumed}
+          />
         )}
 
         {activeTab === 'upload' && (
