@@ -10,6 +10,7 @@ export default function LoginPage() {
   const [isSignUp, setIsSignUp] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [message, setMessage] = useState('')
   const router = useRouter()
   const supabase = createClient()
 
@@ -17,24 +18,25 @@ export default function LoginPage() {
     e.preventDefault()
     setLoading(true)
     setError('')
+    setMessage('')
 
     if (isSignUp) {
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
-        options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback`,
-        },
       })
       if (error) {
         setError(error.message)
-      } else if (data.user) {
-        // Create profile after sign-up
+      } else if (data.user && data.session) {
+        // User is confirmed and has a session — create profile and proceed
         await supabase.from('profiles').upsert({
           id: data.user.id,
           email: data.user.email,
         })
         router.push('/onboarding')
+      } else if (data.user && !data.session) {
+        // User created but no session — email confirmation is still enabled in Supabase
+        setMessage('Account created! Check your email to confirm, then sign in.')
       }
     } else {
       const { error } = await supabase.auth.signInWithPassword({
@@ -89,6 +91,7 @@ export default function LoginPage() {
         </button>
 
         {error && <p className="login-error">{error}</p>}
+        {message && <p className="login-message" style={{ color: '#4ade80', fontSize: '0.875rem', marginTop: '0.5rem' }}>{message}</p>}
 
         <div className="login-toggle">
           {isSignUp ? 'Already have an account? ' : "Don't have an account? "}

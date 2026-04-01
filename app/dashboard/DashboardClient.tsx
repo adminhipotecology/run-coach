@@ -87,6 +87,8 @@ export default function DashboardClient({ initialPlan, initialRuns }: DashboardC
         onPrefillConsumed={() => setPrefillMessage(null)}
         isOpen={sidebarOpen}
         onToggle={() => setSidebarOpen(!sidebarOpen)}
+        plan={plan}
+        runs={runs}
       />
 
       <RunPanel

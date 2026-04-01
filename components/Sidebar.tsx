@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import Chat from './Chat'
 import GarminUpload from './GarminUpload'
+import type { Plan, Run } from '@/types'
 
 interface SidebarProps {
   onStreamComplete: () => void
@@ -11,6 +12,8 @@ interface SidebarProps {
   onPrefillConsumed?: () => void
   isOpen: boolean
   onToggle: () => void
+  plan: Plan
+  runs: Run[]
 }
 
 export default function Sidebar({
@@ -20,6 +23,8 @@ export default function Sidebar({
   onPrefillConsumed,
   isOpen,
   onToggle,
+  plan,
+  runs,
 }: SidebarProps) {
   const [activeTab, setActiveTab] = useState<'chat' | 'upload'>('chat')
 
@@ -72,7 +77,11 @@ export default function Sidebar({
         )}
 
         {activeTab === 'upload' && (
-          <GarminUpload onRunParsed={onRunParsed} />
+          <GarminUpload
+            onRunParsed={onRunParsed}
+            plan={plan}
+            runs={runs}
+          />
         )}
       </aside>
     </>

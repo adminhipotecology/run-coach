@@ -1,4 +1,3 @@
-import { ChatAnthropic } from '@langchain/anthropic'
 import { createAgent } from 'langchain'
 import { COACH_SYSTEM_PROMPT } from './prompts'
 import { generatePlanTool } from './tools/generate-plan'
@@ -16,15 +15,8 @@ const tools = [
 ]
 
 export function createCoachAgent() {
-  const model = new ChatAnthropic({
-    modelName: 'claude-sonnet-4-20250514',
-    anthropicApiKey: process.env.ANTHROPIC_API_KEY,
-    temperature: 0.7,
-    maxTokens: 4096,
-  })
-
   return createAgent({
-    model,
+    model: 'anthropic:claude-sonnet-4-20250514',
     tools,
     systemPrompt: COACH_SYSTEM_PROMPT,
   })

@@ -122,48 +122,134 @@ export async function parseFitFile(buffer: ArrayBuffer): Promise<ParsedRun> {
   })
 }
 
+/**
+ * Parse a CSV string that may contain quoted fields with newlines (Garmin export format).
+ * Returns an array of rows, each row being an array of field values.
+ */
+function parseCSVRows(csv: string): string[][] {
+  const rows: string[][] = []
+  let current = ''
+  let inQuotes = false
+  let fields: string[] = []
+
+  for (let i = 0; i < csv.length; i++) {
+    const ch = csv[i]
+
+    if (inQuotes) {
+      if (ch === '"' && csv[i + 1] === '"') {
+        current += '"'
+        i++ // skip escaped quote
+      } else if (ch === '"') {
+        inQuotes = false
+      } else {
+        current += ch
+      }
+    } else {
+      if (ch === '"') {
+        inQuotes = true
+      } else if (ch === ',') {
+        fields.push(current.trim())
+        current = ''
+      } else if (ch === '\n' || ch === '\r') {
+        if (ch === '\r' && csv[i + 1] === '\n') i++
+        fields.push(current.trim())
+        current = ''
+        if (fields.some((f) => f !== '')) {
+          rows.push(fields)
+        }
+        fields = []
+      } else {
+        current += ch
+      }
+    }
+  }
+  // Last field/row
+  fields.push(current.trim())
+  if (fields.some((f) => f !== '')) {
+    rows.push(fields)
+  }
+
+  return rows
+}
+
+/**
+ * Normalize multi-line Garmin header into single-line lowercase names.
+ * e.g. "Avg Pace\nmin/km" → "avg pace min/km"
+ */
+function normalizeHeader(raw: string): string {
+  return raw.replace(/\n/g, ' ').toLowerCase().trim()
+}
+
 export function parseCsvFile(csvContent: string): ParsedRun {
-  const lines = csvContent.trim().split('\n')
-  if (lines.length < 2) throw new Error('CSV file is empty or has no data rows')
+  const rows = parseCSVRows(csvContent)
+  if (rows.length < 2) throw new Error('CSV file is empty or has no data rows')
 
-  const headers = lines[0].split(',').map((h) => h.trim().toLowerCase())
-  const rows = lines.slice(1).map((line) =>
-    line.split(',').map((v) => v.trim())
-  )
+  const headers = rows[0].map(normalizeHeader)
+  const dataRows = rows.slice(1)
 
-  function getCol(name: string): number {
+  function col(name: string): number {
     return headers.findIndex((h) => h.includes(name))
   }
 
-  const laps = rows.map((row, i) => ({
+  function val(row: string[], name: string): string {
+    const idx = col(name)
+    return idx >= 0 ? (row[idx] || '') : ''
+  }
+
+  function num(row: string[], name: string): number {
+    const v = val(row, name).replace(/[^0-9.]/g, '')
+    return parseFloat(v) || 0
+  }
+
+  // Separate summary row from lap rows
+  // Garmin CSV has a "Summary" row at the end
+  const summaryIdx = dataRows.findIndex((r) => r[0]?.toLowerCase() === 'summary')
+  const summaryRow = summaryIdx >= 0 ? dataRows[summaryIdx] : null
+  const lapRows = summaryIdx >= 0 ? dataRows.slice(0, summaryIdx) : dataRows
+
+  // Filter out tiny remainder laps (< 0.1 km) — these are GPS rounding artifacts
+  const significantLaps = lapRows.filter((row) => {
+    const dist = num(row, 'distance')
+    return dist >= 0.1
+  })
+
+  const laps = significantLaps.map((row, i) => ({
     lap: i + 1,
-    time: row[getCol('time')] || '0:00',
-    pace: row[getCol('pace')] || '0:00',
-    hrAvg: parseInt(row[getCol('avg hr')] || row[getCol('heart')] || '0'),
-    hrMax: parseInt(row[getCol('max hr')] || '0'),
-    ascent: parseInt(row[getCol('ascent')] || row[getCol('elev gain')] || '0'),
-    descent: parseInt(row[getCol('descent')] || row[getCol('elev loss')] || '0'),
+    time: val(row, 'time') || '0:00',
+    pace: val(row, 'avg pace') || '0:00',
+    hrAvg: Math.round(num(row, 'avg hr')),
+    hrMax: Math.round(num(row, 'max hr')),
+    ascent: Math.round(num(row, 'total ascent')),
+    descent: Math.round(num(row, 'total descent')),
   }))
 
-  const totalHR = laps.reduce((sum, l) => sum + l.hrAvg, 0)
-  const maxHR = Math.max(...laps.map((l) => l.hrMax))
+  // Extract summary stats — prefer summary row, fall back to aggregating laps
+  const source = summaryRow ?? null
+  const distance = source ? num(source, 'distance') : laps.length
+  const totalTime = source ? val(source, 'time') : '0:00'
+  const avgPace = source ? val(source, 'avg pace') : '0:00'
+  const hrAvg = source ? Math.round(num(source, 'avg hr')) : (laps.length > 0 ? Math.round(laps.reduce((s, l) => s + l.hrAvg, 0) / laps.length) : 0)
+  const hrMax = source ? Math.round(num(source, 'max hr')) : Math.max(0, ...laps.map((l) => l.hrMax))
+  const cadenceAvg = source ? Math.round(num(source, 'avg run cadence')) : 0
+  const cadenceMax = source ? Math.round(num(source, 'max run cadence')) : 0
+  const strideLength = source ? num(source, 'avg stride length') : 0
+  const calories = source ? Math.round(num(source, 'calories')) : 0
+  const ascent = source ? Math.round(num(source, 'total ascent')) : laps.reduce((s, l) => s + l.ascent, 0)
+  const descent = source ? Math.round(num(source, 'total descent')) : laps.reduce((s, l) => s + l.descent, 0)
 
   return {
     stats: {
-      distance: 0, // Will need user input or sum of lap distances
-      time: '0:00',
-      pace: '0:00',
-      hrAvg: Math.round(totalHR / laps.length),
-      hrMax: maxHR,
-      cadenceAvg: 0,
-      cadenceMax: 0,
-      strideLength: 0,
-      calories: 0,
+      distance: Math.round(distance * 100) / 100,
+      time: totalTime,
+      pace: avgPace,
+      hrAvg,
+      hrMax,
+      cadenceAvg,
+      cadenceMax,
+      strideLength: Math.round(strideLength * 100) / 100,
+      calories,
     },
-    elevation: {
-      ascent: laps.reduce((sum, l) => sum + l.ascent, 0),
-      descent: laps.reduce((sum, l) => sum + l.descent, 0),
-    },
+    elevation: { ascent, descent },
     trainingEffect: { aerobic: 0, anaerobic: 0 },
     laps,
     date: new Date().toISOString().split('T')[0],
